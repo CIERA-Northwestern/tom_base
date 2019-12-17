@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 import sys
 import os
+import mimetypes
 from django.conf import settings
 from django.template.loader import get_template
 from django.core.management import call_command
@@ -32,11 +33,17 @@ class Command(BaseCommand):
             'DO NOT RUN THIS SCRIPT ON AN EXISTING TOM. It will override any custom settings you may '
             'already have.\n'
         )
-        prompt = 'Do you wish to continue? {}'.format(self.style.WARNING('[Y/n] '))
+        prompt = 'Do you wish to continue? {}'.format(self.style.WARNING('[y/N] '))
         self.stdout.write(welcome_text)
-
-        if not input(prompt).upper() == 'Y':
-            self.exit()
+        while True:
+            response = input(prompt).lower()
+            if not response or response == 'n':
+                self.stdout.write('Aborting installation.')
+                self.exit()
+            elif response == 'y':
+                break
+            else:
+                self.stdout.write('Invalid response. Please try again.')
 
     def check_python(self):
         self.status('Checking Python version... ')
@@ -48,7 +55,7 @@ class Command(BaseCommand):
             except ImportError:
                 self.exit('Could not load dataclasses. Please use Python >= 3.7 or 3.6 with dataclasses installed')
         elif major < 3 or minor < 7:
-                self.exit('Incompatible Python version found. Please install Python >= 3.7')
+            self.exit('Incompatible Python version found. Please install Python >= 3.7')
         self.ok()
 
     def create_project_dirs(self):
@@ -81,7 +88,6 @@ class Command(BaseCommand):
         call_command('migrate', verbosity=0, interactive=False)
         self.ok()
 
-
     def get_target_type(self):
         allowed_types = {
             '1': 'SIDEREAL',
@@ -95,6 +101,25 @@ class Command(BaseCommand):
         except KeyError:
             self.stdout.write('Error: invalid choice {}'.format(target_type))
             self.get_target_type()
+
+    def get_hint_preference(self):
+        help_message_info = (
+            'Help messages can be configured to appear to give suggestions on commonly customized functions. If '
+            'enabled now, they can be turned off by changing HINTS_ENABLED to False in settings.py.\n'
+        )
+        prompt = 'Would you like to enable hints? {}'.format(self.style.WARNING('[y/N] '))
+        self.stdout.write(help_message_info)
+        while True:
+            response = input(prompt).lower()
+            if not response or response == 'n':
+                self.context['HINTS_ENABLED'] = False
+            elif response == 'y':
+                self.context['HINTS_ENABLED'] = True
+            else:
+                self.stdout.write('Invalid response. Please try again.')
+                continue
+
+            break
 
     def generate_secret_key(self):
         self.status('Generating secret key... ')
@@ -157,6 +182,7 @@ class Command(BaseCommand):
         self.create_project_dirs()
         self.generate_secret_key()
         self.get_target_type()
+        self.get_hint_preference()
         self.generate_config()
         self.generate_urls()
         self.run_migrations()

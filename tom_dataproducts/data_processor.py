@@ -1,164 +1,67 @@
-import magic
+import mimetypes
 
-from astropy.time import Time, TimezoneInfo
-from astropy import units
-from astropy.io import fits, ascii
-from astropy.wcs import WCS
-from specutils import Spectrum1D
-import numpy as np
+from django.conf import settings
+from importlib import import_module
 
-from tom_observations.facility import get_service_class
-from .exceptions import InvalidFileFormatException
+from tom_dataproducts.models import ReducedDatum
+
+
+DEFAULT_DATA_PROCESSOR_CLASS = 'tom_dataproducts.data_processor.DataProcessor'
+
+
+def run_data_processor(dp):
+    """
+    Reads the `data_product_type` from the dp parameter and imports the corresponding `DataProcessor` specified in
+    `settings.py`, then runs `process_data` and inserts the returned values into the database.
+
+    :param dp: DataProduct which will be processed into a list
+    :type dp: DataProduct
+    """
+
+    try:
+        processor_class = settings.DATA_PROCESSORS[dp.data_product_type]
+    except Exception:
+        processor_class = DEFAULT_DATA_PROCESSOR_CLASS
+
+    try:
+        mod_name, class_name = processor_class.rsplit('.', 1)
+        mod = import_module(mod_name)
+        clazz = getattr(mod, class_name)
+    except (ImportError, AttributeError):
+        raise ImportError('Could not import {}. Did you provide the correct path?'.format(processor_class))
+
+    data_processor = clazz()
+    data = data_processor.process_data(dp)
+
+    for datum in data:
+        ReducedDatum.objects.create(
+            target=dp.target,
+            data_product=dp,
+            data_type=dp.data_product_type,
+            timestamp=datum[0],
+            value=datum[1]
+        )
 
 
 class DataProcessor():
 
-    def process_spectroscopy(self, data_product, facility):
+    FITS_MIMETYPES = ['image/fits', 'application/fits']
+    PLAINTEXT_MIMETYPES = ['text/plain', 'text/csv']
+
+    mimetypes.add_type('image/fits', '.fits')
+    mimetypes.add_type('image/fits', '.fz')
+    mimetypes.add_type('application/fits', '.fits')
+    mimetypes.add_type('application/fits', '.fz')
+
+    def process_data(self, data_product):
         """
-        Routes a spectrum processing call to a method specific to a file-format.
+        Routes a photometry processing call to a method specific to a file-format. This method is expected to be
+        implemented by any subclasses.
 
-        Parameters
-        ----------
-        data_product : tom_dataproducts.models.DataProduct
-            Spectroscopic DataProduct which will be processed into a Spectrum1D
-        facility : str
-            The name of the facility from which the data was taken, and should match the key in the FACILITY property in
-            the TOM settings.
+        :param data_product: DataProduct which will be processed into a list
+        :type data_product: DataProduct
 
-        Returns
-        -------
-        specutils.Spectrum1D
-            Spectrum1D object containing the data from the DataProduct
-
-        Raises
-        ------
-        InvalidFileFormatException
+        :returns: python list of 2-tuples, each with a timestamp and corresponding data
+        :rtype: list of 2-tuples
         """
-
-        filetype = magic.from_file(data_product.data.path, mime=True)
-        if filetype == 'image/fits':
-            return self._process_spectrum_from_fits(data_product, facility)
-        elif filetype == 'text/plain':
-            return self._process_spectrum_from_plaintext(data_product, facility)
-        else:
-            raise InvalidFileFormatException('Unsupported file type')
-
-    def _process_spectrum_from_fits(self, data_product, facility):
-        """
-        Processes the data from a spectrum from a fits file into a Spectrum1D object, which can then be serialized and
-        stored as a ReducedDatum for further processing or display. File is read using specutils as specified in the
-        below documentation.
-        # https://specutils.readthedocs.io/en/doc-testing/specutils/read_fits.html
-
-        Parameters
-        ----------
-        data_product : tom_dataproducts.models.DataProduct
-            Spectroscopic DataProduct which will be processed into a Spectrum1D
-        facility : str
-            The name of the facility from which the data was taken, and should match the key in the FACILITY property in
-            the TOM settings.
-
-        Returns
-        -------
-        specutils.Spectrum1D
-            Spectrum1D object containing the data from the DataProduct
-        """
-
-        flux, header = fits.getdata(data_product.data.path, header=True)
-
-        dim = len(flux.shape)
-        if dim == 3:
-            flux = flux[0, 0, :]
-        elif flux.shape[0] == 2:
-            flux = flux[0, :]
-        header['CUNIT1'] = 'Angstrom'
-        wcs = WCS(header=header)
-        flux = flux * get_service_class(facility)().get_flux_constant()
-
-        spectrum = Spectrum1D(flux=flux, wcs=wcs)
-
-        return spectrum
-
-    def _process_spectrum_from_plaintext(self, data_product, facility):
-        """
-        Processes the data from a spectrum from a plaintext file into a Spectrum1D object, which can then be serialized
-        and stored as a ReducedDatum for further processing or display. File is read using astropy as specified in
-        the below documentation. The file is expected to be a multi-column delimited file, with headers for wavelength
-        and flux.
-        # http://docs.astropy.org/en/stable/io/ascii/read.html
-
-        Parameters
-        ----------
-        data_product : tom_dataproducts.models.DataProduct
-            Spectroscopic DataProduct which will be processed into a Spectrum1D
-        facility : str
-            The name of the facility from which the data was taken, and should match the key in the FACILITY property in
-            the TOM settings.
-
-        Returns
-        -------
-        specutils.Spectrum1D
-            Spectrum1D object containing the data from the DataProduct
-        """
-
-        data = ascii.read(data_product.data.path)
-        spectral_axis = np.array(data['wavelength']) * get_service_class(facility)().get_wavelength_units()
-        flux = np.array(data['flux']) * get_service_class(facility)().get_flux_constant()
-        spectrum = Spectrum1D(flux=flux, spectral_axis=spectral_axis)
-
-        return spectrum
-
-    def process_photometry(self, data_product):
-        """
-        Routes a photometry processing call to a method specific to a file-format.
-
-        Parameters
-        ----------
-        data_product : tom_dataproducts.models.DataProduct
-            Photometric DataProduct which will be processed into a dict
-
-        Returns
-        -------
-        dict
-            python dict containing the data from the DataProduct
-        """
-
-        filetype = magic.from_file(data_product.data.path, mime=True)
-        if filetype == 'text/plain':
-            return self._process_photometry_from_plaintext(data_product)
-        else:
-            raise InvalidFileFormatException('Unsupported file type')
-
-    def _process_photometry_from_plaintext(self, data_product):
-        """
-        Processes the photometric data from a plaintext file into a dict, which can then be  stored as a ReducedDatum
-        for further processing or display. File is read using astropy as specified in the below documentation. The file
-        is expected to be a multi-column delimited file, with headers for time, magnitude, filter, and error.
-        # http://docs.astropy.org/en/stable/io/ascii/read.html
-
-        Parameters
-        ----------
-        data_product : tom_dataproducts.models.DataProduct
-            Photometric DataProduct which will be processed into a dict
-
-        Returns
-        -------
-        dict
-            python dict containing the data from the DataProduct
-        """
-
-        photometry = {}
-
-        data = ascii.read(data_product.data.path)
-        for datum in data:
-            time = Time(float(datum['time']), format='mjd')
-            utc = TimezoneInfo(utc_offset=0*units.hour)
-            time.format = 'datetime'
-            value = {
-                'magnitude': datum['magnitude'],
-                'filter': datum['filter'],
-                'error': datum['error']
-            }
-            photometry.setdefault(time.to_datetime(timezone=utc), []).append(value)
-
-        return photometry
+        return []

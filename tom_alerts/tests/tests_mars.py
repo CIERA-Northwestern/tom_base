@@ -26,18 +26,19 @@ alert1 = {
     'objectId': 'ZTF18abbkloa',
 }
 
+
 @override_settings(TOM_ALERT_CLASSES=['tom_alerts.brokers.mars.MARSBroker'])
 class TestMARSBrokerClass(TestCase):
     """ Test the functionality of the MARSBroker, we modify the django settings to make sure
     it is the only installed broker.
     """
     def setUp(self):
-        self.test_target = Target.objects.create(identifier='ZTF18aberpsh')
+        self.test_target = Target.objects.create(name='ZTF18aberpsh')
         ReducedDatum.objects.create(
             source_name='MARS',
             source_location=11053318,
             target=self.test_target,
-            data_type='PHOTOMETRY',
+            data_type='photometry',
             timestamp=timezone.now(),
             value=12
         )
@@ -104,10 +105,10 @@ class TestMARSBrokerClass(TestCase):
         self.assertEqual(reduced_data.count(), 2)
 
     def test_to_target(self):
-        test_alert = self.test_data[1]
+        test_alert = self.test_data[0]
 
         created_target = MARSBroker().to_target(test_alert)
-        self.assertEqual(created_target.name, 'ZTF18aberpsh')
+        self.assertEqual(created_target.name, 'ZTF18abbkloa')
 
     def test_to_generic_alert(self):
         test_alert = self.test_data[1]
