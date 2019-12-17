@@ -216,16 +216,35 @@ FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
         'api_key': os.getenv('LCO_API_KEY', ''),
-    }
+    },
 }
+
+# Define the valid data product types for your TOM. Be careful when removing items, as previously valid types will no
+# longer be valid, and may cause issues unless the offending records are modified.
+DATA_PRODUCT_TYPES = {
+    'photometry': ('photometry', 'Photometry'),
+    'fits_file': ('fits_file', 'FITS File'),
+    'spectroscopy': ('spectroscopy', 'Spectroscopy'),
+    'image_file': ('image_file', 'Image File')
+}
+
+DATA_PROCESSORS = {
+    'photometry': 'tom_dataproducts.processors.photometry_processor.PhotometryProcessor',
+    'spectroscopy': 'tom_dataproducts.processors.spectroscopy_processor.SpectroscopyProcessor',
+}
+
+TOM_FACILITY_CLASSES = [
+    'tom_observations.facilities.lco.LCOFacility',
+    'tom_observations.facilities.gemini.GEMFacility'
+]
 
 # Define extra target fields here. Types can be any of "number", "string", "boolean" or "datetime"
 # See https://tomtoolkit.github.io/docs/target_fields for documentation on this feature
 # For example:
 # EXTRA_FIELDS = [
-#     {'name': 'redshift', 'type': 'number'},
+#     {'name': 'redshift', 'type': 'number', 'default': 0},
 #     {'name': 'discoverer', 'type': 'string'}
-#     {'name': 'eligible', 'type': 'boolean'},
+#     {'name': 'eligible', 'type': 'boolean', 'hidden': True},
 #     {'name': 'dicovery_date', 'type': 'datetime'}
 # ]
 EXTRA_FIELDS = []
@@ -253,7 +272,10 @@ THUMBNAIL_MAX_SIZE = (0, 0)
 
 THUMBNAIL_DEFAULT_SIZE = (200, 200)
 
+HINTS_ENABLED = False
+HINT_LEVEL = 20
+
 try:
-    from local_settings import * # noqa
+    from local_settings import *  # noqa
 except ImportError:
     pass

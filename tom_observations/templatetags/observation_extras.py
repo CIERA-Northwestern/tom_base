@@ -12,30 +12,45 @@ register = template.Library()
 
 @register.inclusion_tag('tom_observations/partials/observing_buttons.html')
 def observing_buttons(target):
+    """
+    Displays the observation buttons for all facilities available in the TOM.
+    """
     facilities = get_service_classes()
     return {'target': target, 'facilities': facilities}
 
 
 @register.inclusion_tag('tom_observations/partials/observation_list.html')
 def observation_list(target=None):
+    """
+    Displays a list of all observations in the TOM, limited to an individual target if specified.
+    """
     if target:
         observations = target.observationrecord_set.all()
     else:
         observations = ObservationRecord.objects.all().order_by('-created')
     return {'observations': observations}
 
+
 @register.inclusion_tag('tom_observations/partials/observation_distribution.html')
 def observation_distribution(observations):
+    """
+    Displays a plot showing on a map the locations of all observations recorded in the TOM.
+    """
 
     # "distinct" query is not supported, must manually find distinct observation per target
-    sorted_observations = observations.order_by('scheduled_end') # ascending so that only the max is preserved
+    sorted_observations = observations.order_by('scheduled_end')  # ascending so that only the max is preserved
     observation_targets = {}
     for obs in sorted_observations:
         observation_targets[obs.target_id] = (obs.status, obs.terminal)
 
-    observation_no_status = [t for t in observation_targets.keys() if not observation_targets[t][0]] # status==""
-    observation_terminal = [t for t in observation_targets.keys() if observation_targets[t][0] and observation_targets[t][1]] # status!="" and terminal
-    observation_non_terminal = [t for t in observation_targets.keys() if observation_targets[t][0] and not observation_targets[t][1]] # status!="" and not terminal
+    observation_no_status = [t for t in observation_targets.keys()
+                             if not observation_targets[t][0]]  # status==""
+    observation_terminal = [t for t in observation_targets.keys()
+                            if observation_targets[t][0]
+                            and observation_targets[t][1]]  # status!="" and terminal
+    observation_non_terminal = [t for t in observation_targets.keys()
+                                if observation_targets[t][0]
+                                and not observation_targets[t][1]]  # status!="" and not terminal
 
     targets_no_status = Target.objects.filter(pk__in=observation_no_status)
     targets_terminal = Target.objects.filter(pk__in=observation_terminal)
@@ -52,7 +67,7 @@ def observation_distribution(observations):
             text=[l[2] for l in locations_no_status],
             hoverinfo='lon+lat+text',
             mode='markers',
-            marker = dict(color = 'rgba(90, 90, 90, .8)'),
+            marker=dict(color='rgba(90, 90, 90, .8)'),
             type='scattergeo'
         ),
         dict(
@@ -61,7 +76,7 @@ def observation_distribution(observations):
             text=[l[2] for l in locations_non_terminal],
             hoverinfo='lon+lat+text',
             mode='markers',
-            marker = dict(color = 'rgba(152, 0, 0, .8)'),
+            marker=dict(color='rgba(152, 0, 0, .8)'),
             type='scattergeo'
         ),
         dict(
@@ -70,7 +85,7 @@ def observation_distribution(observations):
             text=[l[2] for l in locations_terminal],
             hoverinfo='lon+lat+text',
             mode='markers',
-            marker = dict(color = 'rgba(0, 152, 0, .8)'),
+            marker=dict(color='rgba(0, 152, 0, .8)'),
             type='scattergeo'
         ),
         dict(
@@ -104,4 +119,3 @@ def observation_distribution(observations):
     }
     figure = offline.plot(go.Figure(data=data, layout=layout), output_type='div', show_link=False)
     return {'figure': figure}
-

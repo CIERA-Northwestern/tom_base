@@ -1,20 +1,22 @@
 from importlib import import_module
 import json
 import requests
-
 from abc import ABC, abstractmethod
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout
 from django import forms
 from django.conf import settings
 from django.core.files.base import ContentFile
+import logging
 
 from tom_targets.models import Target
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_FACILITY_CLASSES = [
         'tom_observations.facilities.lco.LCOFacility',
         'tom_observations.facilities.gemini.GEMFacility',
+        'tom_observations.facilities.soar.SOARFacility',
 ]
 
 try:
@@ -57,9 +59,9 @@ class GenericObservationFacility(ABC):
     All facilities should inherit from  this class which
     provides some base functionality.
     In order to make use of a facility class, add the path to
-    TOM_FACILITY_CLASSES in your settings.py.
+    ``TOM_FACILITY_CLASSES`` in your ``settings.py``.
 
-    For an implementation example please see
+    For an implementation example, please see
     https://github.com/TOMToolkit/tom_base/blob/master/tom_observations/facilities/lco.py
     """
 
@@ -107,7 +109,7 @@ class GenericObservationFacility(ABC):
 
         # Add any JPEG images created from DataProducts
         image_products = DataProduct.objects.filter(
-            observation_record_id=observation_record.id, tag='image_file'
+            observation_record_id=observation_record.id, data_product_type='image_file'
         )
         for product in image_products:
             products['saved'].append(product)
@@ -130,11 +132,19 @@ class GenericObservationFacility(ABC):
                 dfile = ContentFile(product_data)
                 dp.data.save(product['filename'], dfile)
                 dp.save()
-                dp.get_preview()
+                logger.info('Saved new dataproduct: {}'.format(dp.data))
             if AUTO_THUMBNAILS:
                 create_image_dataproduct(dp)
+                dp.get_preview()
             final_products.append(dp)
         return final_products
+
+    @abstractmethod
+    def get_form(self, observation_type):
+        """
+        This method takes in an observation type and returns the form type that matches it.
+        """
+        pass
 
     @abstractmethod
     def submit_observation(self, observation_payload):
@@ -173,6 +183,13 @@ class GenericObservationFacility(ABC):
         Returns the astropy units that a facility uses for its spectral wavelengths
         """
         pass
+
+    def is_fits_facility(self, header):
+        """
+        Returns True if the FITS header is from this facility based on valid keywords and associated
+        values, False otherwise.
+        """
+        return False
 
     @abstractmethod
     def get_terminal_observing_states(self):
@@ -226,12 +243,13 @@ class GenericObservationForm(forms.Form):
     """
     facility = forms.CharField(required=True, max_length=50, widget=forms.HiddenInput())
     target_id = forms.IntegerField(required=True, widget=forms.HiddenInput())
+    observation_type = forms.CharField(required=False, max_length=50, widget=forms.HiddenInput())
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.add_input(Submit('submit', 'Submit'))
-        self.common_layout = Layout('facility', 'target_id')
+        self.common_layout = Layout('facility', 'target_id', 'observation_type')
 
     def serialize_parameters(self):
         return json.dumps(self.cleaned_data)

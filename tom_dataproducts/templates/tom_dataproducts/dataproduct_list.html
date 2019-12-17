@@ -20,7 +20,7 @@
           <th>Target</th>
           <th>Observation</th>
           <th>Groups</th>
-          <th>Tag</th>
+          <th>Type</th>
           <th>Thumbnail</th>
         </tr>
       </thead>
@@ -28,7 +28,7 @@
         {% for product in object_list %}
         <tr>
           <td><a href="{{ product.data.url }}">{{ product.get_file_name|truncatechars:40 }}</a></th>
-          <td><a href="{% url 'tom_targets:detail' product.target.id %}">{{ product.target.identifier|truncatechars:40 }}</a></td>
+          <td><a href="{% url 'tom_targets:detail' product.target.id %}">{{ product.target.name|truncatechars:40 }}</a></td>
           {% if product.observation_record.id %}
           <td><a href="{% url 'tom_observations:detail' product.observation_record.id %}">{{ product.observation_record|truncatechars:40 }}</a></td>
           {% else %}
@@ -40,8 +40,8 @@
             {% endfor %}
           </td>
           <td>
-            {% if product.tag %}
-              {{ product.get_tag_display }}
+            {% if product.data_product_type %}
+              {{ product.get_type_display }}
             {% endif %}
           </a></td>
           {% if product.get_file_extension == '.fz' or product.get_file_extension == '.fits' %}

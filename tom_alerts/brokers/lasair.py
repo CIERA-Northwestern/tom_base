@@ -34,6 +34,11 @@ def get_lasair_object(objectId):
 
 
 class LasairBroker(GenericBroker):
+    """
+    The ``LasairBroker`` is the interface to the Lasair alert broker. For information regarding the query format for
+    Lasair, please see https://lasair.roe.ac.uk/objlist/.
+    """
+
     name = 'Lasair'
     form = LasairBrokerForm
 
@@ -87,8 +92,7 @@ class LasairBroker(GenericBroker):
         for c in alert['candidates']:
             if 'candid' in c:
                 break
-        return Target(
-            identifier=c['candid'],
+        return Target.objects.create(
             name=c['candid'],
             type='SIDEREAL',
             ra=c['ra'],
